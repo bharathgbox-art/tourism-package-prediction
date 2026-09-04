@@ -27,16 +27,13 @@ EXPECTED_COLUMNS = [
 def register_dataset(path: str) -> pd.DataFrame:
     """Load the dataset, validate columns, and print a summary."""
 
-    # 1. Load ----------------------------------------------------------------
     print(f"Loading dataset from: {path}")
     try:
         df = pd.read_csv(path)
     except FileNotFoundError:
         print(f"ERROR: File not found at '{path}'.")
-        print("Please upload tourism.csv into tourism_project/data/ first.")
         sys.exit(1)
 
-    # 2. Column validation ---------------------------------------------------
     missing_cols = [c for c in EXPECTED_COLUMNS if c not in df.columns]
     if missing_cols:
         print(f"ERROR: The following expected columns are missing: {missing_cols}")
@@ -44,7 +41,6 @@ def register_dataset(path: str) -> pd.DataFrame:
     else:
         print("✓  All expected columns are present.")
 
-    # 3. Dataset summary -----------------------------------------------------
     print("\n=== Dataset Summary ===")
     print(f"  Rows    : {df.shape[0]:,}")
     print(f"  Columns : {df.shape[1]}")
