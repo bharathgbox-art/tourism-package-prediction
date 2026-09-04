@@ -1,17 +1,9 @@
 """
 app.py  –  Streamlit Deployment
 --------------------------------
-Section 4 – Model Deployment
-
-Loads the trained model committed to the repository by the pipeline
-(tourism_project/deployment/best_model.pkl), collects customer inputs
-via a sidebar form, assembles them into a single-row DataFrame, and
-displays a purchase prediction.
-
-Deploy this file on Streamlit Community Cloud:
-  - Repository: bharathgbox-art/tourism-package-prediction
-  - Branch:     main
-  - Main file:  tourism_project/deployment/app.py
+Loads the trained model from the repository, collects customer inputs,
+assembles them into a DataFrame with the exact same column names and
+order used during training, and displays a purchase prediction.
 """
 
 import os
@@ -27,7 +19,6 @@ st.set_page_config(
 )
 
 # ── Load the model ────────────────────────────────────────────────────────
-# The model is committed to the repo by the GitHub Actions pipeline
 MODEL_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "best_model.pkl",
@@ -35,20 +26,28 @@ MODEL_PATH = os.path.join(
 
 @st.cache_resource
 def load_model():
-    """Load and cache the trained RandomForest model."""
     return joblib.load(MODEL_PATH)
 
 model = load_model()
 
-# ── Encoding maps (must match the LabelEncoder order used in prep.py) ─────
-CONTACT_MAP    = {"Company Invited": 0, "Self Inquiry": 1}
-OCCUPATION_MAP = {"Free Lancer": 0, "Large Business": 1, "Salaried": 2, "Small Business": 3}
-GENDER_MAP     = {"Female": 0, "Male": 1}
-MARITAL_MAP    = {"Divorced": 0, "Married": 1, "Single": 2, "Unmarried": 3}
-DESIGNATION_MAP = {"AVP": 0, "Executive": 1, "Manager": 2, "Senior Manager": 3, "VP": 4}
-PRODUCT_MAP    = {"Basic": 0, "Deluxe": 1, "King": 2, "Standard": 3, "Super Deluxe": 4}
+# ── Feature names in exact training order (from prep.py after dropping CustomerID & ProdTaken) ──
+FEATURE_COLUMNS = [
+    "Age", "TypeofContact", "CityTier", "Occupation", "Gender",
+    "NumberOfPersonVisiting", "PreferredPropertyStar", "MaritalStatus",
+    "NumberOfTrips", "Passport", "OwnCar", "NumberOfChildrenVisiting",
+    "Designation", "MonthlyIncome", "PitchSatisfactionScore",
+    "ProductPitched", "NumberOfFollowups", "DurationOfPitch",
+]
 
-# ── UI ───────────────────────────────────────────────────────────────────
+# ── Encoding maps (must match LabelEncoder alphabetical order used in prep.py) ──
+CONTACT_MAP     = {"Company Invited": 0, "Self Inquiry": 1}
+OCCUPATION_MAP  = {"Free Lancer": 0, "Large Business": 1, "Salaried": 2, "Small Business": 3}
+GENDER_MAP      = {"Female": 0, "Male": 1}
+MARITAL_MAP     = {"Divorced": 0, "Married": 1, "Single": 2, "Unmarried": 3}
+DESIGNATION_MAP = {"AVP": 0, "Executive": 1, "Manager": 2, "Senior Manager": 3, "VP": 4}
+PRODUCT_MAP     = {"Basic": 0, "Deluxe": 1, "King": 2, "Standard": 3, "Super Deluxe": 4}
+
+# ── UI ────────────────────────────────────────────────────────────────────
 st.title("🌿 Wellness Tourism Package – Purchase Predictor")
 st.markdown(
     "Enter the customer details in the sidebar, then click **Predict** to see "
@@ -57,8 +56,6 @@ st.markdown(
 
 with st.sidebar:
     st.header("Customer Details")
-
-    # ── Customer demographic fields ──────────────────────────────────────
     age                     = st.slider("Age", 18, 80, 35)
     type_of_contact         = st.selectbox("Type of Contact", list(CONTACT_MAP.keys()))
     city_tier               = st.selectbox("City Tier", [1, 2, 3])
@@ -86,9 +83,8 @@ with st.sidebar:
 
 # ── Prediction ────────────────────────────────────────────────────────────
 if predict_btn:
-    # Assemble all inputs into a single-row DataFrame
-    # Column order must exactly match the feature order used during training
-    input_data = pd.DataFrame([{
+    # Build a dict in the exact same column order used during training
+    row = {
         "Age":                      age,
         "TypeofContact":            CONTACT_MAP[type_of_contact],
         "CityTier":                 city_tier,
@@ -107,10 +103,27 @@ if predict_btn:
         "ProductPitched":           PRODUCT_MAP[product_pitched],
         "NumberOfFollowups":        num_followups,
         "DurationOfPitch":          duration_of_pitch,
-    }])
+    }
 
-    prediction   = model.predict(input_data)[0]
-    probability  = model.predict_proba(input_data)[0][1]
+    # Create DataFrame with columns in exact training order
+    input_data = pd.DataFrame([row], columns=FEATURE_COLUMNS)
+
+    # Show what the model expects vs what we are sending
+    try:
+        expected = model.feature_names_in_.tolist()
+        if expected != FEATURE_COLUMNS:
+            st.warning(
+                f"Feature mismatch detected!\n"
+                f"Model expects: {expected}\n"
+                f"App sending:   {FEATURE_COLUMNS}"
+            )
+            # Re-order to match model exactly
+            input_data = input_data[expected]
+    except AttributeError:
+        pass  # Older sklearn versions don't have feature_names_in_
+
+    prediction  = model.predict(input_data)[0]
+    probability = model.predict_proba(input_data)[0][1]
 
     st.divider()
     col1, col2 = st.columns(2)
