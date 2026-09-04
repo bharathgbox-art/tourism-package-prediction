@@ -1,0 +1,124 @@
+# ═══════════════════════════════════════════════════════════════════════════
+# pipeline.yml – Tourism Package Prediction MLOps Pipeline
+#
+# Trigger: every push to the main branch (or manual dispatch).
+# Jobs    : register-dataset → data-prep → model-training
+#
+# The final job commits the trained model back to the repository so
+# Streamlit Community Cloud can load it from the repo directly.
+# ═══════════════════════════════════════════════════════════════════════════
+
+name: Tourism Project Pipeline
+
+on:
+  push:
+    branches:
+      - main          # Automatically triggers on every push to main
+  workflow_dispatch:  # Allows manual trigger from the Actions tab
+
+permissions:
+  contents: write     # Required so the training job can commit the model
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 1 – Data Registration
+  # Validates the CSV schema and prints a dataset summary.
+  # Uploads tourism.csv as an artifact for downstream jobs.
+  # ─────────────────────────────────────────────────────────────────────────
+  register-dataset:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pandas
+
+      - name: Register and validate dataset
+        run: python tourism_project/model_building/data_register.py
+
+      - name: Upload registered dataset as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: registered-data
+          path: tourism_project/data/tourism.csv
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 2 – Data Preparation
+  # Loads, cleans, and splits the dataset.
+  # Uploads the four CSV split files as an artifact for model training.
+  # ─────────────────────────────────────────────────────────────────────────
+  data-prep:
+    needs: register-dataset
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pandas scikit-learn
+
+      - name: Run data preparation
+        run: python tourism_project/model_building/prep.py
+
+      - name: Upload train/test splits as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-splits
+          path: |
+            Xtrain.csv
+            Xtest.csv
+            ytrain.csv
+            ytest.csv
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 3 – Model Training
+  # Downloads the split artifact, trains and tunes the model with MLflow
+  # tracking, then commits the best model back to the repository.
+  # ─────────────────────────────────────────────────────────────────────────
+  model-training:
+    needs: data-prep
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pandas scikit-learn==1.4.2 joblib mlflow
+
+      - name: Download train/test splits artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: data-splits
+
+      - name: Start MLflow tracking server (background)
+        run: |
+          nohup mlflow ui --host 0.0.0.0 --port 5000 &
+          sleep 5
+
+      - name: Train and tune model
+        run: python tourism_project/model_building/train.py
+
+      - name: Commit trained model back to repository
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add tourism_project/deployment/best_model.pkl
+          git commit -m "Add trained model [skip ci]" || echo "No changes to commit"
+          git push
