@@ -1,9 +1,5 @@
 """
 app.py  –  Streamlit Deployment
---------------------------------
-Loads the trained model from the repository, collects customer inputs,
-assembles them into a DataFrame with the exact same column names and
-order used during training, and displays a purchase prediction.
 """
 
 import os
@@ -11,14 +7,12 @@ import joblib
 import pandas as pd
 import streamlit as st
 
-# ── Page configuration ────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Wellness Tourism Package Predictor",
     page_icon="🌿",
     layout="wide",
 )
 
-# ── Load the model ────────────────────────────────────────────────────────
 MODEL_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     "best_model.pkl",
@@ -30,16 +24,15 @@ def load_model():
 
 model = load_model()
 
-# ── Feature names in exact training order (from prep.py after dropping CustomerID & ProdTaken) ──
+# Exact feature order the model was trained with
 FEATURE_COLUMNS = [
-    "Age", "TypeofContact", "CityTier", "Occupation", "Gender",
-    "NumberOfPersonVisiting", "PreferredPropertyStar", "MaritalStatus",
-    "NumberOfTrips", "Passport", "OwnCar", "NumberOfChildrenVisiting",
-    "Designation", "MonthlyIncome", "PitchSatisfactionScore",
-    "ProductPitched", "NumberOfFollowups", "DurationOfPitch",
+    "Unnamed: 0", "Age", "TypeofContact", "CityTier", "DurationOfPitch",
+    "Occupation", "Gender", "NumberOfPersonVisiting", "NumberOfFollowups",
+    "ProductPitched", "PreferredPropertyStar", "MaritalStatus",
+    "NumberOfTrips", "Passport", "PitchSatisfactionScore", "OwnCar",
+    "NumberOfChildrenVisiting", "Designation", "MonthlyIncome",
 ]
 
-# ── Encoding maps (must match LabelEncoder alphabetical order used in prep.py) ──
 CONTACT_MAP     = {"Company Invited": 0, "Self Inquiry": 1}
 OCCUPATION_MAP  = {"Free Lancer": 0, "Large Business": 1, "Salaried": 2, "Small Business": 3}
 GENDER_MAP      = {"Female": 0, "Male": 1}
@@ -47,7 +40,6 @@ MARITAL_MAP     = {"Divorced": 0, "Married": 1, "Single": 2, "Unmarried": 3}
 DESIGNATION_MAP = {"AVP": 0, "Executive": 1, "Manager": 2, "Senior Manager": 3, "VP": 4}
 PRODUCT_MAP     = {"Basic": 0, "Deluxe": 1, "King": 2, "Standard": 3, "Super Deluxe": 4}
 
-# ── UI ────────────────────────────────────────────────────────────────────
 st.title("🌿 Wellness Tourism Package – Purchase Predictor")
 st.markdown(
     "Enter the customer details in the sidebar, then click **Predict** to see "
@@ -81,46 +73,32 @@ with st.sidebar:
 
     predict_btn = st.button("Predict", use_container_width=True)
 
-# ── Prediction ────────────────────────────────────────────────────────────
 if predict_btn:
-    # Build a dict in the exact same column order used during training
+    # Build row matching the exact feature order the model was trained with
+    # 'Unnamed: 0' was the dataframe index accidentally saved — set to 0
     row = {
+        "Unnamed: 0":               0,
         "Age":                      age,
         "TypeofContact":            CONTACT_MAP[type_of_contact],
         "CityTier":                 city_tier,
+        "DurationOfPitch":          duration_of_pitch,
         "Occupation":               OCCUPATION_MAP[occupation],
         "Gender":                   GENDER_MAP[gender],
         "NumberOfPersonVisiting":   num_persons_visiting,
+        "NumberOfFollowups":        num_followups,
+        "ProductPitched":           PRODUCT_MAP[product_pitched],
         "PreferredPropertyStar":    preferred_property_star,
         "MaritalStatus":            MARITAL_MAP[marital_status],
         "NumberOfTrips":            num_trips,
         "Passport":                 1 if passport == "Yes" else 0,
+        "PitchSatisfactionScore":   pitch_satisfaction,
         "OwnCar":                   1 if own_car == "Yes" else 0,
         "NumberOfChildrenVisiting": num_children_visiting,
         "Designation":              DESIGNATION_MAP[designation],
         "MonthlyIncome":            monthly_income,
-        "PitchSatisfactionScore":   pitch_satisfaction,
-        "ProductPitched":           PRODUCT_MAP[product_pitched],
-        "NumberOfFollowups":        num_followups,
-        "DurationOfPitch":          duration_of_pitch,
     }
 
-    # Create DataFrame with columns in exact training order
     input_data = pd.DataFrame([row], columns=FEATURE_COLUMNS)
-
-    # Show what the model expects vs what we are sending
-    try:
-        expected = model.feature_names_in_.tolist()
-        if expected != FEATURE_COLUMNS:
-            st.warning(
-                f"Feature mismatch detected!\n"
-                f"Model expects: {expected}\n"
-                f"App sending:   {FEATURE_COLUMNS}"
-            )
-            # Re-order to match model exactly
-            input_data = input_data[expected]
-    except AttributeError:
-        pass  # Older sklearn versions don't have feature_names_in_
 
     prediction  = model.predict(input_data)[0]
     probability = model.predict_proba(input_data)[0][1]
@@ -138,4 +116,5 @@ if predict_btn:
         st.metric(label="Purchase Probability", value=f"{probability:.1%}")
 
     st.subheader("Input Summary")
-    st.dataframe(input_data, use_container_width=True)
+    display_cols = [c for c in input_data.columns if c != "Unnamed: 0"]
+    st.dataframe(input_data[display_cols], use_container_width=True)
