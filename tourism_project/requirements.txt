@@ -1,8 +1,8 @@
 # Dependencies used by all three GitHub Actions jobs
 # Pin scikit-learn to the same version used for deployment
 # to ensure the saved model loads without compatibility errors
-pandas>=2.0.0
-scikit-learn==1.4.2
-numpy>=1.24.0
-joblib>=1.3.0
-mlflow>=3.0.0
+streamlit>=1.32.0
+scikit-learn
+pandas
+numpy
+joblib
